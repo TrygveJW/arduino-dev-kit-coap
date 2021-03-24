@@ -1,4 +1,4 @@
-#include "coap.h"
+#include "coap-simple.h"
 #include "Arduino.h"
 
 #define LOGGING
@@ -33,7 +33,7 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip) {
 }
 
 uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
-    uint8_t buffer[BUF_MAX_SIZE];
+    uint8_t buffer[COAP_BUF_MAX_SIZE];
     uint8_t *p = buffer;
     uint16_t running_delta = 0;
     uint16_t packetSize = 0;
@@ -60,7 +60,7 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
         uint32_t optdelta;
         uint8_t len, delta;
 
-        if (packetSize + 5 + packet.options[i].length >= BUF_MAX_SIZE) {
+        if (packetSize + 5 + packet.options[i].length >= COAP_BUF_MAX_SIZE) {
             return 0;
         }
         optdelta = packet.options[i].number - running_delta;
@@ -92,7 +92,7 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
 
     // make payload
     if (packet.payloadlen > 0) {
-        if ((packetSize + 1 + packet.payloadlen) >= BUF_MAX_SIZE) {
+        if ((packetSize + 1 + packet.payloadlen) >= COAP_BUF_MAX_SIZE) {
             return 0;
         }
         *p++ = 0xFF;
@@ -107,23 +107,23 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
     return packet.messageid;
 }
 
-uint16_t Coap::get(IPAddress ip, int port, char *url) {
+uint16_t Coap::get(IPAddress ip, int port, const char *url) {
     return this->send(ip, port, url, COAP_CON, COAP_GET, NULL, 0, NULL, 0);
 }
 
-uint16_t Coap::put(IPAddress ip, int port, char *url, char *payload) {
+uint16_t Coap::put(IPAddress ip, int port, const char *url, const char *payload) {
     return this->send(ip, port, url, COAP_CON, COAP_PUT, NULL, 0, (uint8_t *)payload, strlen(payload));
 }
 
-uint16_t Coap::put(IPAddress ip, int port, char *url, char *payload, int payloadlen) {
+uint16_t Coap::put(IPAddress ip, int port, const char *url, const char *payload, size_t payloadlen) {
     return this->send(ip, port, url, COAP_CON, COAP_PUT, NULL, 0, (uint8_t *)payload, payloadlen);
 }
 
-uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen) {
-    return this->send(ip, port, url, type, method, token, tokenlen, (uint8_t *)payload, payloadlen, COAP_NONE);
+uint16_t Coap::send(IPAddress ip, int port, const char *url, COAP_TYPE type, COAP_METHOD method, const uint8_t *token, uint8_t tokenlen, const uint8_t *payload, size_t payloadlen) {
+    return this->send(ip, port, url, type, method, token, tokenlen, payload, payloadlen, COAP_NONE);
 }
 
-uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen, COAP_CONTENT_TYPE content_type) {
+uint16_t Coap::send(IPAddress ip, int port, const char *url, COAP_TYPE type, COAP_METHOD method, const uint8_t *token, uint8_t tokenlen, const uint8_t *payload, size_t payloadlen, COAP_CONTENT_TYPE content_type) {
 
     // make packet
     CoapPacket packet;
@@ -138,29 +138,30 @@ uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METH
     packet.messageid = rand();
 
     // use URI_HOST UIR_PATH
-    // String ipaddress = String(ip[0]) + String(".") + String(ip[1]) + String(".") + String(ip[2]) + String(".") + String(ip[3]);
-    // packet.addOption(COAP_URI_HOST, ipaddress.length(), (uint8_t *)ipaddress.c_str());
+    char ipaddress[16] = "";
+    sprintf(ipaddress, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    packet.addOption(COAP_URI_HOST, strlen(ipaddress), (uint8_t *)ipaddress);
 
     // parse url
     int idx = 0;
     for (int i = 0; i < strlen(url); i++) {
         if (url[i] == '/') {
-      packet.addOption(COAP_URI_PATH, i-idx, (uint8_t *)(url + idx));
+			packet.addOption(COAP_URI_PATH, i-idx, (uint8_t *)(url + idx));
             idx = i + 1;
         }
     }
 
     if (idx <= strlen(url)) {
-    packet.addOption(COAP_URI_PATH, strlen(url)-idx, (uint8_t *)(url + idx));
+		packet.addOption(COAP_URI_PATH, strlen(url)-idx, (uint8_t *)(url + idx));
     }
 
-  // if Content-Format option
-  uint8_t optionBuffer[2] {0};
-  if (content_type != COAP_NONE) {
-    optionBuffer[0] = ((uint16_t)content_type & 0xFF00) >> 8;
-    optionBuffer[1] = ((uint16_t)content_type & 0x00FF) ;
-    packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
-  }
+	// if Content-Format option
+	uint8_t optionBuffer[2] {0};
+	if (content_type != COAP_NONE) {
+		optionBuffer[0] = ((uint16_t)content_type & 0xFF00) >> 8;
+		optionBuffer[1] = ((uint16_t)content_type & 0x00FF) ;
+		packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
+	}
 
     // send packet
     return this->sendPacket(packet, ip, port);
@@ -213,11 +214,11 @@ int Coap::parseOption(CoapOption *option, uint16_t *running_delta, uint8_t **buf
 
 bool Coap::loop() {
 
-    uint8_t buffer[BUF_MAX_SIZE];
+    uint8_t buffer[COAP_BUF_MAX_SIZE];
     int32_t packetlen = _udp->parsePacket();
 
     while (packetlen > 0) {
-        packetlen = _udp->read(buffer, packetlen >= BUF_MAX_SIZE ? BUF_MAX_SIZE : packetlen);
+        packetlen = _udp->read(buffer, packetlen >= COAP_BUF_MAX_SIZE ? COAP_BUF_MAX_SIZE : packetlen);
 
         CoapPacket packet;
 
@@ -246,7 +247,7 @@ bool Coap::loop() {
             uint16_t delta = 0;
             uint8_t *end = buffer + packetlen;
             uint8_t *p = buffer + COAP_HEADER_SIZE + packet.tokenlen;
-            while(optionIndex < MAX_OPTION_NUM && *p != 0xFF && p < end) {
+            while(optionIndex < COAP_MAX_OPTION_NUM && *p != 0xFF && p < end) {
                 //packet.options[optionIndex];
                 if (0 != parseOption(&packet.options[optionIndex], &delta, &p, end-p))
                     return false;
@@ -275,7 +276,7 @@ bool Coap::loop() {
                 if (packet.options[i].number == COAP_URI_PATH && packet.options[i].length > 0) {
                     char urlname[packet.options[i].length + 1];
                     memcpy(urlname, packet.options[i].buffer, packet.options[i].length);
-                    urlname[packet.options[i].length] = NULL;
+                    urlname[packet.options[i].length] = 0;
                     if(url.length() > 0)
                       url += "/";
                     url += urlname;
@@ -308,17 +309,17 @@ uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid) {
     return this->sendResponse(ip, port, messageid, NULL, 0, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload) {
+uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, const char *payload) {
     return this->sendResponse(ip, port, messageid, payload, strlen(payload), COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen) {
+uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, const char *payload, size_t payloadlen) {
     return this->sendResponse(ip, port, messageid, payload, payloadlen, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
 
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen,
-                COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE type, uint8_t *token, int tokenlen) {
+uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, const char *payload, size_t payloadlen,
+                COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE type, const uint8_t *token, int tokenlen) {
     // make packet
     CoapPacket packet;
 
@@ -335,7 +336,7 @@ uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *pa
     uint8_t optionBuffer[2] = {0};
     optionBuffer[0] = ((uint16_t)type & 0xFF00) >> 8;
     optionBuffer[1] = ((uint16_t)type & 0x00FF) ;
-  packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
+	packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
 
     return this->sendPacket(packet, ip, port);
 }
