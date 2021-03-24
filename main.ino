@@ -8,9 +8,11 @@
  * Telenor Start IoT, https://startiot.telenor.com/
  */
 
+#define COAP_BUF_MAX_SIZE 1024
+
 #include <MKRNB.h>
 
-#include "coap.h"
+#include "coap-simple.h"
 #include "arduino_secrets.h"
 
 // Enter sensitive data and other configurations in "arduino_secrets.h".
