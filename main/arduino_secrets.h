@@ -1,5 +1,5 @@
 // Network related configuration
-#define SECRET_PINNUMBER     ""              // SIM card PIN number
+#define SECRET_PINNUMBER     "1111"              // SIM card PIN number
 #define SECRET_GPRS_APN      "telenor.iotgw" // Telenor IoT Gateway APN
 #define SECRET_COAP_IP       0x012010AC      // Telenor IoT Gateway IP address (172.16.32.1)
 #define SECRET_COAP_ENDPOINT "/"             // Telenor IoT Gateway CoAP endpoint
