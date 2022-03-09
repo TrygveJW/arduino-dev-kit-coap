@@ -11,9 +11,13 @@
 #define COAP_BUF_MAX_SIZE 1024
 
 #include <MKRNB.h>
+#include <DHT.h>
 
 #include "coap-simple.h"
 #include "arduino_secrets.h"
+
+#define DHTPin 1
+#define DHTType DHT11
 
 // Enter sensitive data and other configurations in "arduino_secrets.h".
 char     pinnumber[]     = SECRET_PINNUMBER;
@@ -24,6 +28,8 @@ uint32_t coap_port       = SECRET_COAP_PORT;
 uint32_t rat             = SECRET_RAT;
 uint32_t cops            = SECRET_COPS;
 bool     debug           = true;
+
+DHT dht = DHT(DHTPin, DHTType);
 
 NB        nbAccess(debug);
 GPRS      gprsAccess;
@@ -47,7 +53,7 @@ void setup() {
    *    - Check attachment
    *    - Set operator
    */
-
+  
   Serial.print("Waiting for modem to get ready...");
   MODEM.begin();
   while (!MODEM.noop());
@@ -112,6 +118,8 @@ void setup() {
   // Initialize CoAP client
   coap.start();
 
+  dht.begin();
+  
   // Seed random number generator with noise from pin 0
   randomSeed(analogRead(0));
 }
@@ -122,8 +130,23 @@ void loop() {
     connectNB();
   }
 
+  float humidity    = dht.readHumidity();
+  float temperature = dht.readTemperature();
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }else{
+    Serial.print("humidity");
+    Serial.println(humidity);
+    Serial.print("temperature: ");
+    Serial.println(temperature);
+  
+  }
+
+  
+  
   Serial.print("Send packet to Telenor MIC...");
-  sendPacket();
+  sendPacket(temperature, humidity);
   Serial.println("done.");
 
   // Continue CoAP operations (handle ACK, send response)
@@ -145,10 +168,10 @@ bool connectNB() {
   return true;
 }
 
-uint16_t sendPacket () {
+uint16_t sendPacket (float float1, float float2) {
   // Generate random simulated data
-  float tmp = 20 + random(0, 9);
-  float hum = 60 + random(0, 9);
+  //float tmp = 20 + random(0, 9);
+  //float hum = 60 + random(0, 9);
 
   /**
    * Create a JSON payload.
@@ -157,7 +180,7 @@ uint16_t sendPacket () {
    * once the packet has been received in Telenor MIC.
    */
   char buffer[100];
-  uint32_t buf_size = snprintf(buffer, 100, "{\"tmp\":%.2f,\"hum\":%.2f,\"latlng\":\"59.898812,10.627212\"}", tmp, hum);
+  uint32_t buf_size = snprintf(buffer, 100, "{\"tmp\":%.2f,\"hum\":%.2f,\"latlng\":\"59.898812,10.627212\"}", float1, float2);
 
   // Send a CoAP POST message to Telenor IoT Gateway
   uint16_t msgid = coap.send(
